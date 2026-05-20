@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router";
-import { Activity, BarChart3, Settings, TrendingUp } from "lucide-react";
+import { Activity, BarChart3, Settings, TrendingUp, BookOpen } from "lucide-react";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -9,6 +9,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { path: "/", label: "Dashboard", icon: Activity },
     { path: "/analytics", label: "Analytics", icon: BarChart3 },
     { path: "/settings", label: "Settings", icon: Settings },
+    { path: "/documentation", label: "Docs", icon: BookOpen },
   ];
 
   return (
@@ -23,9 +24,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="max-w-[1440px] mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp
-              className="w-5 h-5"
-              style={{ color: "var(--color-accent-buy)" }}
+            <img
+              src="/bandit.png"
+              alt="Bandit"
+              className="w-8 h-8 rounded-sm"
             />
             <span
               className="text-lg font-semibold tracking-tight"

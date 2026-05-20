@@ -8,6 +8,7 @@ import {
 } from "./queries/prices";
 import { getDb } from "./queries/connection";
 import { priceSnapshots } from "@db/schema";
+import { fetchBinanceKlines, fetchBinanceTicker } from "./lib/binance";
 
 export const marketRouter = createRouter({
   currentPrice: publicQuery
@@ -72,32 +73,20 @@ export const marketRouter = createRouter({
     )
     .query(async ({ input }) => {
       try {
-        // Dynamically import to avoid type issues
-        const dsModule = await import("./lib/data-source");
-        const result = await dsModule.get_data_source("binance_crypto", "binance_crypto_klines", {
-          symbol: input.symbol,
-          interval: input.interval,
-          limit: input.limit,
-          file_path: `/tmp/klines_${Date.now()}.csv`,
-        });
+        const klines = await fetchBinanceKlines(input.symbol, input.interval, input.limit);
+        if (klines.length === 0) return { synced: 0 };
 
-        if (result && typeof result === "object" && "data" in result) {
-          const data = (result as any).data;
-          if (Array.isArray(data) && data.length > 0) {
-            const snapshots = data.map((c: any) => ({
-              symbol: input.symbol,
-              price: parseFloat(c.close),
-              open: parseFloat(c.open),
-              high: parseFloat(c.high),
-              low: parseFloat(c.low),
-              volume: parseFloat(c.volume),
-              closeTime: new Date(parseInt(c.close_time)),
-            }));
-            await savePriceSnapshots(snapshots);
-            return { synced: snapshots.length };
-          }
-        }
-        return { synced: 0 };
+        const snapshots = klines.map((k) => ({
+          symbol: input.symbol,
+          price: k.close,
+          open: k.open,
+          high: k.high,
+          low: k.low,
+          volume: k.volume,
+          closeTime: new Date(k.closeTime),
+        }));
+        await savePriceSnapshots(snapshots);
+        return { synced: snapshots.length };
       } catch (error) {
         console.error("Failed to sync prices:", error);
         return { synced: 0, error: String(error) };
@@ -108,28 +97,18 @@ export const marketRouter = createRouter({
     .input(z.object({ symbol: z.string().default("BTCUSDT") }))
     .query(async ({ input }) => {
       try {
-        const dsModule = await import("./lib/data-source");
-        const result = await dsModule.get_data_source("binance_crypto", "binance_crypto_price", {
-          symbol: input.symbol,
-          file_path: `/tmp/price_${Date.now()}.csv`,
-        });
+        const ticker = await fetchBinanceTicker(input.symbol);
+        if (!ticker) return { synced: false };
 
-        if (result && typeof result === "object" && "data" in result) {
-          const data = (result as any).data;
-          if (Array.isArray(data) && data.length > 0) {
-            const ticker = data[0];
-            await getDb().insert(priceSnapshots).values({
-              symbol: input.symbol,
-              price: parseFloat(ticker.price),
-              high: parseFloat(ticker.high),
-              low: parseFloat(ticker.low),
-              volume: parseFloat(ticker.volume),
-              closeTime: new Date(),
-            });
-            return { price: parseFloat(ticker.price), synced: true };
-          }
-        }
-        return { synced: false };
+        await getDb().insert(priceSnapshots).values({
+          symbol: input.symbol,
+          price: ticker.price,
+          high: ticker.high,
+          low: ticker.low,
+          volume: ticker.volume,
+          closeTime: new Date(),
+        });
+        return { price: ticker.price, synced: true };
       } catch (error) {
         console.error("Failed to sync ticker:", error);
         return { synced: false, error: String(error) };
