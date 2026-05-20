@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 230 20% 4%;
+    --foreground: 233 20% 93%;
+    --card: 230 18% 7%;
+    --card-foreground: 233 20% 93%;
+    --popover: 230 18% 7%;
+    --popover-foreground: 233 20% 93%;
+    --primary: 233 20% 93%;
+    --primary-foreground: 230 20% 4%;
+    --secondary: 230 15% 12%;
+    --secondary-foreground: 233 20% 93%;
+    --muted: 230 15% 12%;
+    --muted-foreground: 230 10% 50%;
+    --accent: 230 15% 12%;
+    --accent-foreground: 233 20% 93%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 230 15% 15%;
+    --input: 230 15% 15%;
+    --ring: 217 91% 60%;
+    --radius: 4px;
+
+    /* Bandit custom tokens */
+    --color-bg-base: #0a0b0f;
+    --color-bg-elevated: #11131a;
+    --color-bg-surface: #161821;
+    --color-border-subtle: #1e2030;
+    --color-border-active: #2a2d40;
+    --color-text-primary: #e8e9f0;
+    --color-text-secondary: #7a7f99;
+    --color-text-muted: #4a4f66;
+    --color-accent-buy: #22c55e;
+    --color-accent-sell: #ef4444;
+    --color-accent-neutral: #3b82f6;
+    --color-accent-band: rgba(245, 158, 11, 0.15);
+    --color-accent-band-line: #f59e0b;
+    --color-accent-fee: #8b5cf6;
+    --color-chart-grid: rgba(30, 32, 48, 0.5);
+    --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+    --font-sans: "Inter", "SF Pro Display", system-ui, sans-serif;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    background-color: var(--color-bg-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  .card-surface {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 4px;
+    padding: 16px;
+  }
+
+  .data-label {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .mono-value {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .section-divider {
+    width: 100%;
+    height: 1px;
+    background: var(--color-border-subtle);
+    margin: 24px 0;
+  }
+}
