@@ -138,6 +138,6 @@ export const bandRouter = createRouter({
         };
       });
 
-      return { config, bands, fees, recentPrices };
+      return { config, bands: { ...bands, currentPrice, dataPoints: prices.length }, fees, recentPrices };
     }),
 });

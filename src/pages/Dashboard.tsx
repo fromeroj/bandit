@@ -971,23 +971,36 @@ function BacktestSummary() {
 
 /* ─── Main Dashboard ─── */
 export default function Dashboard() {
+  const { synced, lastSync, getLatest, queryChart } = useLocalDB();
   const { data: fullState } = trpc.band.fullState.useQuery(
     { symbol: "BTCUSDT" },
-    { refetchInterval: 30000 }
+    { refetchInterval: 60000 }
   );
 
-  const price = fullState?.bands?.currentPrice || 0;
-  const bands = fullState?.bands || {
-    mean: 0,
-    std: 0,
-    upperBand: 0,
-    lowerBand: 0,
-    bandWidth: 0,
-    bandWidthPct: 0,
-    signal: "hold" as const,
-    currentPrice: 0,
-    dataPoints: 0,
-  };
+  const latest = synced ? getLatest() : null;
+  const livePrice = latest?.price ?? 0;
+
+  const bands = latest
+    ? (() => {
+        const bw = latest.upperBand - latest.lowerBand;
+        return {
+          mean: latest.mean,
+          std: 0,
+          upperBand: latest.upperBand,
+          lowerBand: latest.lowerBand,
+          bandWidth: bw,
+          bandWidthPct: (bw / latest.mean) * 100,
+          signal: latest.signal,
+          currentPrice: livePrice,
+          dataPoints: 0,
+        };
+      })()
+    : {
+        mean: 0, std: 0, upperBand: 0, lowerBand: 0,
+        bandWidth: 0, bandWidthPct: 0,
+        signal: "hold" as const, currentPrice: 0, dataPoints: 0,
+      };
+
   const fees = fullState?.fees || {
     makerFeePct: 0.1,
     takerFeePct: 0.1,
@@ -1002,26 +1015,16 @@ export default function Dashboard() {
     targetGainUsd: 0,
     targetSellPrice: 0,
   };
-  const chartData = fullState?.recentPrices || [];
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <HeroSection price={price} bands={bands} fees={fees} />
-
-      {/* Price Chart */}
-      <PriceChart data={chartData} />
-
-      {/* Two Column: Fees + Threshold */}
+      <HeroSection price={livePrice} bands={bands} fees={fees} />
+      <PriceChart data={[]} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <FeeBreakdown fees={fees} />
         <ThresholdVisualizer fees={fees} />
       </div>
-
-      {/* Trade History */}
       <TradeHistory />
-
-      {/* Backtest Summary */}
       <BacktestSummary />
     </div>
   );

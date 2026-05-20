@@ -9,7 +9,16 @@ interface LocalDB {
   loadingRows: number;
   loadingPhase: string;
   sync: () => Promise<void>;
+  getLatest: () => LatestRow | null;
   queryChart: (rangeHours: number) => ChartRow[];
+}
+
+export interface LatestRow {
+  price: number;
+  mean: number;
+  upperBand: number;
+  lowerBand: number;
+  signal: "buy" | "sell" | "hold";
 }
 
 export interface ChartRow {
@@ -28,6 +37,7 @@ const Ctx = createContext<LocalDB>({
   loadingRows: 0,
   loadingPhase: "",
   sync: async () => {},
+  getLatest: () => null,
   queryChart: () => [],
 });
 
@@ -180,6 +190,18 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const getLatest = useCallback((): LatestRow | null => {
+    const db = dbRef.current;
+    if (!db) return null;
+    const result = db.exec("SELECT p, mean, upperBand, lowerBand FROM prices ORDER BY t DESC LIMIT 1");
+    if (!result[0] || !result[0].values[0]) return null;
+    const [p, mean, upperBand, lowerBand] = result[0].values[0] as number[];
+    let signal: "buy" | "sell" | "hold" = "hold";
+    if (p <= lowerBand) signal = "buy";
+    else if (p >= upperBand) signal = "sell";
+    return { price: p, mean, upperBand, lowerBand, signal };
+  }, []);
+
   const queryChart = useCallback((rangeHours: number): ChartRow[] => {
     const db = dbRef.current;
     if (!db) return [];
@@ -226,6 +248,7 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
         loadingRows,
         loadingPhase,
         sync,
+        getLatest,
         queryChart,
       }}
     >
