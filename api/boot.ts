@@ -10,7 +10,42 @@ import { Paths } from "@contracts/constants";
 import { startSyncScheduler } from "./lib/scheduler";
 import { getDb } from "./queries/connection";
 import { priceSnapshots } from "@db/schema";
-import { eq, gte, and } from "drizzle-orm";
+import { eq, gte, and, desc, sql as sqlOrm } from "drizzle-orm";
+
+const WINDOW_SIZE = 48 * 60;
+const K = 2.0;
+
+function computeRollingBands(rows: { t: number; p: number }[]): number[][] {
+  const windowPrices: number[] = [];
+  const result: number[][] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    windowPrices.push(rows[i].p);
+    if (windowPrices.length > WINDOW_SIZE) windowPrices.shift();
+
+    let mean: number;
+    let upperBand: number;
+    let lowerBand: number;
+
+    if (windowPrices.length >= 2) {
+      mean = windowPrices.reduce((a, b) => a + b, 0) / windowPrices.length;
+      const variance =
+        windowPrices.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) /
+        windowPrices.length;
+      const std = Math.sqrt(variance);
+      upperBand = mean + K * std;
+      lowerBand = mean - K * std;
+    } else {
+      mean = rows[i].p;
+      upperBand = rows[i].p;
+      lowerBand = rows[i].p;
+    }
+
+    result.push([rows[i].t, rows[i].p, mean, upperBand, lowerBand]);
+  }
+
+  return result;
+}
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -19,37 +54,57 @@ app.get(Paths.oauthCallback, createOAuthCallbackHandler());
 
 app.get("/api/sync/prices", async (c) => {
   const after = parseInt(c.req.query("after") || "0");
-  const limit = Math.min(parseInt(c.req.query("limit") || "50000"), 100000);
   const symbol = c.req.query("symbol") || "BTCUSDT";
 
-  const conditions = [eq(priceSnapshots.symbol, symbol)];
-  if (after > 0) {
-    conditions.push(gte(priceSnapshots.closeTime, new Date(after)));
+  if (after === 0) {
+    const rows = await getDb()
+      .select({
+        t: priceSnapshots.closeTime,
+        p: priceSnapshots.price,
+      })
+      .from(priceSnapshots)
+      .where(eq(priceSnapshots.symbol, symbol))
+      .orderBy(priceSnapshots.closeTime);
+
+    const mapped = rows.map((r) => ({ t: r.t.getTime(), p: +r.p }));
+    const withBands = computeRollingBands(mapped);
+    return c.json(withBands);
   }
 
-  const rows = await getDb()
+  const lookbackRows = await getDb()
     .select({
       t: priceSnapshots.closeTime,
       p: priceSnapshots.price,
-      o: priceSnapshots.open,
-      h: priceSnapshots.high,
-      l: priceSnapshots.low,
-      v: priceSnapshots.volume,
     })
     .from(priceSnapshots)
-    .where(and(...conditions))
-    .orderBy(priceSnapshots.closeTime)
-    .limit(limit);
+    .where(eq(priceSnapshots.symbol, symbol))
+    .orderBy(desc(priceSnapshots.closeTime))
+    .limit(WINDOW_SIZE);
 
-  const compact = rows.map((r) => [
-    r.t.getTime(),
-    +r.p,
-    +(r.o ?? r.p),
-    +(r.h ?? r.p),
-    +(r.l ?? r.p),
-    +(r.v ?? 0),
-  ]);
-  return c.json(compact);
+  const newRows = await getDb()
+    .select({
+      t: priceSnapshots.closeTime,
+      p: priceSnapshots.price,
+    })
+    .from(priceSnapshots)
+    .where(
+      and(
+        eq(priceSnapshots.symbol, symbol),
+        gte(priceSnapshots.closeTime, new Date(after))
+      )
+    )
+    .orderBy(priceSnapshots.closeTime);
+
+  if (newRows.length === 0) return c.json([]);
+
+  const combined = [
+    ...lookbackRows.reverse().filter((r) => r.t.getTime() < after),
+    ...newRows,
+  ].map((r) => ({ t: r.t.getTime(), p: +r.p }));
+
+  const allWithBands = computeRollingBands(combined);
+  const onlyNew = allWithBands.filter((r) => r[0] >= after);
+  return c.json(onlyNew);
 });
 
 app.use("/api/trpc/*", async (c) => {

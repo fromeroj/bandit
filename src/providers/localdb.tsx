@@ -52,10 +52,9 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
       db.run(`CREATE TABLE IF NOT EXISTS prices (
         t INTEGER PRIMARY KEY,
         p REAL NOT NULL,
-        o REAL,
-        h REAL,
-        l REAL,
-        v REAL
+        mean REAL,
+        upperBand REAL,
+        lowerBand REAL
       )`);
       dbRef.current = db;
       if (mounted) setReady(true);
@@ -75,61 +74,61 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
         0;
 
       if (existingMax === 0) {
-        let after = 0;
-        let fetched = 0;
-        let page = 0;
-        while (true) {
-          page++;
-          setLoadingPhase(
-            `Downloading price data (page ${page})...`
-          );
-          const res = await fetch(
-            `/api/sync/prices?after=${after}&limit=50000`
-          );
-          if (!res.ok) break;
-          const rows: number[][] = await res.json();
-          if (!rows || rows.length === 0) break;
-
-          db.run("BEGIN TRANSACTION");
-          const stmt = db.prepare(
-            "INSERT OR IGNORE INTO prices (t, p, o, h, l, v) VALUES (?, ?, ?, ?, ?, ?)"
-          );
-          for (const r of rows) {
-            stmt.run([r[0], r[1], r[2], r[3], r[4], r[5]]);
-          }
-          stmt.free();
-          db.run("COMMIT");
-
-          fetched += rows.length;
-          after = rows[rows.length - 1][0];
-          setLoadingRows(fetched);
-          setLoadingPhase(
-            `Downloaded ${fetched.toLocaleString()} rows (page ${page})...`
-          );
-          console.log(
-            `[localdb] Fetched ${fetched} rows, latest: ${new Date(after).toISOString()}`
-          );
-          if (rows.length < 50000) break;
+        setLoadingPhase("Downloading price data...");
+        const res = await fetch("/api/sync/prices?after=0");
+        if (!res.ok) {
+          console.error("[localdb] Sync HTTP error:", res.status);
+          return;
         }
-        setLoadingPhase(
-          `Ready! ${fetched.toLocaleString()} candles loaded`
+        const rows: number[][] = await res.json();
+        if (!rows || rows.length === 0) return;
+
+        db.run("BEGIN TRANSACTION");
+        const stmt = db.prepare(
+          "INSERT OR IGNORE INTO prices (t, p, mean, upperBand, lowerBand) VALUES (?, ?, ?, ?, ?)"
         );
-        console.log(`[localdb] Initial load complete: ${fetched} rows`);
+        const BATCH = 5000;
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          stmt.run([r[0], r[1], r[2], r[3], r[4]]);
+          if (i > 0 && i % BATCH === 0) {
+            stmt.free();
+            db.run("COMMIT");
+            setLoadingRows(i);
+            setLoadingPhase(
+              `Storing ${i.toLocaleString()} / ${rows.length.toLocaleString()} candles...`
+            );
+            db.run("BEGIN TRANSACTION");
+            const s2 = db.prepare(
+              "INSERT OR IGNORE INTO prices (t, p, mean, upperBand, lowerBand) VALUES (?, ?, ?, ?, ?)"
+            );
+            for (let j = i; j < Math.min(i + BATCH, rows.length); j++) {
+              s2.run([rows[j][0], rows[j][1], rows[j][2], rows[j][3], rows[j][4]]);
+            }
+            s2.free();
+          }
+        }
+        stmt.free();
+        db.run("COMMIT");
+
+        setLoadingRows(rows.length);
+        setLoadingPhase(
+          `Ready! ${rows.length.toLocaleString()} candles loaded`
+        );
+        console.log(`[localdb] Initial load complete: ${rows.length} rows`);
         setTimeout(() => setSynced(true), 600);
       } else {
-        const res = await fetch(
-          `/api/sync/prices?after=${existingMax}&limit=5000`
-        );
+        const res = await fetch(`/api/sync/prices?after=${existingMax}`);
         if (!res.ok) return;
         const rows: number[][] = await res.json();
         if (!rows || rows.length === 0) return;
 
         db.run("BEGIN TRANSACTION");
         const stmt = db.prepare(
-          "INSERT OR IGNORE INTO prices (t, p, o, h, l, v) VALUES (?, ?, ?, ?, ?, ?)"
+          "INSERT OR IGNORE INTO prices (t, p, mean, upperBand, lowerBand) VALUES (?, ?, ?, ?, ?)"
         );
         for (const r of rows) {
-          stmt.run([r[0], r[1], r[2], r[3], r[4], r[5]]);
+          stmt.run([r[0], r[1], r[2], r[3], r[4]]);
         }
         stmt.free();
         db.run("COMMIT");
@@ -146,28 +145,10 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
     const db = dbRef.current;
     if (!db) return [];
 
-    const windowMins = 48 * 60;
     const cutoff = Date.now() - rangeHours * 3600 * 1000;
-
-    const sql = `
-      SELECT
-        t,
-        p,
-        AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW) as mean,
-        AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)
-          + 2.0 * SQRT(AVG(p * p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)
-          - AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)
-          * AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)) as upperBand,
-        AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)
-          - 2.0 * SQRT(AVG(p * p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)
-          - AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)
-          * AVG(p) OVER (ORDER BY t ROWS BETWEEN ${windowMins} PRECEDING AND CURRENT ROW)) as lowerBand
-      FROM prices
-      WHERE t >= ?
-      ORDER BY t
-    `;
-
-    const stmt = db.prepare(sql);
+    const stmt = db.prepare(
+      "SELECT t, p, mean, upperBand, lowerBand FROM prices WHERE t >= ? ORDER BY t"
+    );
     stmt.bind([cutoff]);
 
     const rows: ChartRow[] = [];
