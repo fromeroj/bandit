@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Line,
+  Bar,
 } from "recharts";
 import {
   ArrowDown,
@@ -60,10 +61,12 @@ function HeroSection({
   price,
   bands,
   fees,
+  volumeRegime,
 }: {
   price: number;
   bands: any;
   fees: any;
+  volumeRegime: string;
 }) {
   const priceInRange = price > 0 && bands.upperBand > 0;
   const bandRange = bands.upperBand - bands.lowerBand;
@@ -79,6 +82,8 @@ function HeroSection({
       ? "var(--color-accent-buy)"
       : bands.signal === "sell"
       ? "var(--color-accent-sell)"
+      : bands.signal === "skip"
+      ? "var(--color-accent-fee)"
       : "var(--color-accent-band-line)";
 
   const SignalIcon =
@@ -86,11 +91,13 @@ function HeroSection({
       ? ArrowDown
       : bands.signal === "sell"
       ? ArrowUp
+      : bands.signal === "skip"
+      ? Minus
       : Minus;
 
   return (
     <div className="card-surface mb-6">
-      <div className="grid grid-cols-3 gap-8 items-center">
+      <div className="grid grid-cols-4 gap-6 items-center">
         {/* Current Price */}
         <div>
           <div className="data-label mb-1">BTC/USDT</div>
@@ -177,6 +184,30 @@ function HeroSection({
             >
               ${formatPrice(bands.upperBand)}
             </span>
+          </div>
+        </div>
+
+        {/* Volume Regime */}
+        <div>
+          <div className="data-label mb-1">Volume</div>
+          <div
+            className="text-sm font-semibold uppercase"
+            style={{
+              fontFamily: "var(--font-mono)",
+              color: volumeRegime === "calm"
+                ? "var(--color-accent-buy)"
+                : volumeRegime === "spike"
+                ? "var(--color-accent-sell)"
+                : "var(--color-accent-fee)",
+            }}
+          >
+            {volumeRegime === "calm" ? "Ranging" : volumeRegime === "spike" ? "Trending" : "Normal"}
+          </div>
+          <div
+            className="text-xs mt-0.5"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            {volumeRegime === "calm" ? "Safe to trade" : volumeRegime === "spike" ? "Stay out" : "Moderate"}
           </div>
         </div>
 
@@ -343,6 +374,15 @@ function PriceChart({ data }: { data: any[] }) {
               tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`}
               width={60}
             />
+            <YAxis
+              yAxisId="vol"
+              orientation="right"
+              tick={{ fill: "var(--color-text-muted)", fontSize: 10, fontFamily: "var(--font-mono)" }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v.toFixed(0)}`}
+              width={50}
+            />
             <Tooltip
               contentStyle={{
                 background: "var(--color-bg-elevated)",
@@ -401,6 +441,13 @@ function PriceChart({ data }: { data: any[] }) {
               stroke="var(--color-accent-neutral)"
               dot={false}
               strokeWidth={1.5}
+            />
+            <Bar
+              yAxisId="vol"
+              dataKey="volume"
+              fill="var(--color-accent-band-line)"
+              fillOpacity={0.2}
+              stroke="none"
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -980,6 +1027,15 @@ export default function Dashboard() {
   const latest = synced ? getLatest() : null;
   const livePrice = latest?.price ?? 0;
 
+  const volumeRegime = latest
+    ? (() => {
+        const ratio = latest.avgVolume > 0 ? latest.volume / latest.avgVolume : 1;
+        if (ratio > 2.0) return "spike";
+        if (ratio < 0.5) return "calm";
+        return "normal";
+      })()
+    : "normal";
+
   const bands = latest
     ? (() => {
         const bw = latest.upperBand - latest.lowerBand;
@@ -1018,7 +1074,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <HeroSection price={livePrice} bands={bands} fees={fees} />
+      <HeroSection price={livePrice} bands={bands} fees={fees} volumeRegime={volumeRegime} />
       <PriceChart data={[]} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <FeeBreakdown fees={fees} />

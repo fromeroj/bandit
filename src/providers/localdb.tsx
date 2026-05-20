@@ -18,7 +18,9 @@ export interface LatestRow {
   mean: number;
   upperBand: number;
   lowerBand: number;
-  signal: "buy" | "sell" | "hold";
+  volume: number;
+  avgVolume: number;
+  signal: "buy" | "sell" | "hold" | "skip";
 }
 
 export interface ChartRow {
@@ -27,6 +29,8 @@ export interface ChartRow {
   upperBand: number;
   lowerBand: number;
   mean: number;
+  volume: number;
+  avgVolume: number;
 }
 
 const Ctx = createContext<LocalDB>({
@@ -83,10 +87,10 @@ async function saveToIDB(data: Uint8Array): Promise<void> {
 function insertRows(db: Database, rows: number[][]): void {
   db.run("BEGIN TRANSACTION");
   const stmt = db.prepare(
-    "INSERT OR IGNORE INTO prices (t, p, mean, upperBand, lowerBand) VALUES (?, ?, ?, ?, ?)"
+    "INSERT OR IGNORE INTO prices (t, p, mean, upperBand, lowerBand, v, avgV) VALUES (?, ?, ?, ?, ?, ?, ?)"
   );
   for (const r of rows) {
-    stmt.run([r[0], r[1], r[2], r[3], r[4]]);
+    stmt.run([r[0], r[1], r[2], r[3], r[4], r[5], r[6]]);
   }
   stmt.free();
   db.run("COMMIT");
@@ -119,7 +123,9 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
           p REAL NOT NULL,
           mean REAL,
           upperBand REAL,
-          lowerBand REAL
+          lowerBand REAL,
+          v REAL,
+          avgV REAL
         )`);
         console.log("[localdb] Fresh database created");
       }
@@ -193,13 +199,19 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
   const getLatest = useCallback((): LatestRow | null => {
     const db = dbRef.current;
     if (!db) return null;
-    const result = db.exec("SELECT p, mean, upperBand, lowerBand FROM prices ORDER BY t DESC LIMIT 1");
+    const result = db.exec("SELECT p, mean, upperBand, lowerBand, v, avgV FROM prices ORDER BY t DESC LIMIT 1");
     if (!result[0] || !result[0].values[0]) return null;
-    const [p, mean, upperBand, lowerBand] = result[0].values[0] as number[];
-    let signal: "buy" | "sell" | "hold" = "hold";
-    if (p <= lowerBand) signal = "buy";
-    else if (p >= upperBand) signal = "sell";
-    return { price: p, mean, upperBand, lowerBand, signal };
+    const [p, mean, upperBand, lowerBand, v, avgV] = result[0].values[0] as number[];
+    let signal: "buy" | "sell" | "hold" | "skip" = "hold";
+    const volRatio = avgV > 0 ? v / avgV : 1;
+    if (volRatio > 2.0) {
+      signal = "skip";
+    } else if (p <= lowerBand) {
+      signal = "buy";
+    } else if (p >= upperBand) {
+      signal = "sell";
+    }
+    return { price: p, mean, upperBand, lowerBand, volume: v, avgVolume: avgV, signal };
   }, []);
 
   const queryChart = useCallback((rangeHours: number): ChartRow[] => {
@@ -208,7 +220,7 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
 
     const cutoff = Date.now() - rangeHours * 3600 * 1000;
     const stmt = db.prepare(
-      "SELECT t, p, mean, upperBand, lowerBand FROM prices WHERE t >= ? ORDER BY t"
+      "SELECT t, p, mean, upperBand, lowerBand, v, avgV FROM prices WHERE t >= ? ORDER BY t"
     );
     stmt.bind([cutoff]);
 
@@ -221,6 +233,8 @@ export function LocalDBProvider({ children }: { children: React.ReactNode }) {
         mean: r.mean as number,
         upperBand: r.upperBand as number,
         lowerBand: r.lowerBand as number,
+        volume: r.v as number,
+        avgVolume: r.avgV as number,
       });
     }
     stmt.free();

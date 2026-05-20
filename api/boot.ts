@@ -13,15 +13,19 @@ import { priceSnapshots } from "@db/schema";
 import { eq, gte, and, desc, sql as sqlOrm } from "drizzle-orm";
 
 const WINDOW_SIZE = 48 * 60;
+const VOL_WINDOW = 48 * 60;
 const K = 2.0;
 
-function computeRollingBands(rows: { t: number; p: number }[]): number[][] {
+function computeRollingBands(rows: { t: number; p: number; v: number }[]): number[][] {
   const windowPrices: number[] = [];
+  const windowVols: number[] = [];
   const result: number[][] = [];
 
   for (let i = 0; i < rows.length; i++) {
     windowPrices.push(rows[i].p);
+    windowVols.push(rows[i].v);
     if (windowPrices.length > WINDOW_SIZE) windowPrices.shift();
+    if (windowVols.length > VOL_WINDOW) windowVols.shift();
 
     let mean: number;
     let upperBand: number;
@@ -41,7 +45,9 @@ function computeRollingBands(rows: { t: number; p: number }[]): number[][] {
       lowerBand = rows[i].p;
     }
 
-    result.push([rows[i].t, rows[i].p, mean, upperBand, lowerBand]);
+    const avgVol = windowVols.length > 0 ? windowVols.reduce((a, b) => a + b, 0) / windowVols.length : 0;
+
+    result.push([rows[i].t, rows[i].p, mean, upperBand, lowerBand, rows[i].v, avgVol]);
   }
 
   return result;
@@ -61,12 +67,13 @@ app.get("/api/sync/prices", async (c) => {
       .select({
         t: priceSnapshots.closeTime,
         p: priceSnapshots.price,
+        v: priceSnapshots.volume,
       })
       .from(priceSnapshots)
       .where(eq(priceSnapshots.symbol, symbol))
       .orderBy(priceSnapshots.closeTime);
 
-    const mapped = rows.map((r) => ({ t: r.t.getTime(), p: +r.p }));
+    const mapped = rows.map((r) => ({ t: r.t.getTime(), p: +r.p, v: +(r.v ?? 0) }));
     const withBands = computeRollingBands(mapped);
     return c.json(withBands);
   }
@@ -75,6 +82,7 @@ app.get("/api/sync/prices", async (c) => {
     .select({
       t: priceSnapshots.closeTime,
       p: priceSnapshots.price,
+      v: priceSnapshots.volume,
     })
     .from(priceSnapshots)
     .where(eq(priceSnapshots.symbol, symbol))
@@ -85,6 +93,7 @@ app.get("/api/sync/prices", async (c) => {
     .select({
       t: priceSnapshots.closeTime,
       p: priceSnapshots.price,
+      v: priceSnapshots.volume,
     })
     .from(priceSnapshots)
     .where(
@@ -100,7 +109,7 @@ app.get("/api/sync/prices", async (c) => {
   const combined = [
     ...lookbackRows.reverse().filter((r) => r.t.getTime() < after),
     ...newRows,
-  ].map((r) => ({ t: r.t.getTime(), p: +r.p }));
+  ].map((r) => ({ t: r.t.getTime(), p: +r.p, v: +(r.v ?? 0) }));
 
   const allWithBands = computeRollingBands(combined);
   const onlyNew = allWithBands.filter((r) => r[0] >= after);
