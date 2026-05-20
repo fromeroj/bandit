@@ -842,16 +842,39 @@ export default function Documentation() {
         <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
           The dashboard uses tRPC's <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>refetchInterval</span> option on queries to automatically poll for updated data:
         </p>
-        <CodeBlock>{`// Dashboard — every 30 seconds
+        <CodeBlock>{`// Dashboard — frontend refetches from DB every 30 seconds
 trpc.band.fullState.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 30000 });
 
-// Trade list — every 30 seconds
+// Trade list — frontend refetches from DB every 30 seconds
 trpc.trade.list.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 30000 });
 
-// Backtest summary — every 60 seconds
+// Backtest summary — frontend refetches from DB every 60 seconds
 trpc.backtest.run.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 60000 });`}</CodeBlock>
+
+        <div className="data-label mt-4 mb-2">Server-Side Binance Sync</div>
+        <p className="text-xs mb-2" style={{ color: "var(--color-text-secondary)" }}>
+          A background scheduler runs inside the Node.js server process, fetching live data from Binance's public REST API on two intervals:
+        </p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="p-3 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-buy)" }}>
+            <div className="text-xs font-medium mb-1" style={{ color: "var(--color-accent-buy)" }}>
+              Kline Sync — Every 1 minute
+            </div>
+            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+              Fetches the latest 2 hourly candles from Binance. Only inserts candles with a closeTime newer than the latest row in the database. This ensures the OHLCV chart data stays current without duplicates.
+            </div>
+          </div>
+          <div className="p-3 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-neutral)" }}>
+            <div className="text-xs font-medium mb-1" style={{ color: "var(--color-accent-neutral)" }}>
+              Ticker Sync — Every 20 seconds
+            </div>
+            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+              Fetches the current spot price from Binance's 24hr ticker endpoint. Inserts a snapshot only if no other snapshot was recorded in the last 60 seconds (dedup window). This provides near-real-time price updates between hourly candles.
+            </div>
+          </div>
+        </div>
         <p className="text-xs mt-3" style={{ color: "var(--color-text-muted)" }}>
-          When settings are saved, the mutation's <span style={{ fontFamily: "var(--font-mono)" }}>onSuccess</span> handler invalidates all dependent queries, triggering an immediate refetch. This means band calculations, fee breakdowns, backtest results, and grid search all update instantly after a configuration change — no page reload needed.
+          When settings are saved, the mutation's <span style={{ fontFamily: "var(--font-mono)" }}>onSuccess</span> handler invalidates all dependent queries, triggering an immediate refetch. This means band calculations, fee breakdowns, backtest results, and grid search all update instantly after a configuration change — no page reload needed. The rolling Bollinger Bands are recalculated per candle using a sliding window, so the chart shows historically accurate band boundaries at every point in time.
         </p>
       </DocCard>
 

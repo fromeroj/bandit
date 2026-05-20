@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
+import { useLocalDB, type ChartRow } from "@/providers/localdb";
 import {
   Area,
   XAxis,
@@ -37,7 +38,10 @@ function formatPct(pct: number): string {
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString("en-US", {
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  }) + " " + d.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -225,18 +229,45 @@ function HeroSection({
 /* ─── Price Chart with Bands ─── */
 function PriceChart({ data }: { data: any[] }) {
   const [range, setRange] = useState(24);
+  const { ready, queryChart, lastSync } = useLocalDB();
+  const [localData, setLocalData] = useState<ChartRow[]>([]);
+
   const ranges = [
     { label: "6H", hours: 6 },
     { label: "12H", hours: 12 },
     { label: "24H", hours: 24 },
     { label: "48H", hours: 48 },
-    { label: "7D", hours: 168 },
+    { label: "14D", hours: 336 },
+    { label: "1M", hours: 720 },
   ];
 
-  const filteredData = useMemo(() => {
+  useEffect(() => {
+    if (!ready) return;
+    const rows = queryChart(range);
+    setLocalData(rows);
+  }, [ready, range, lastSync]);
+
+  const chartData = localData.length > 0 ? localData : (() => {
     const cutoff = Date.now() - range * 3600 * 1000;
     return data.filter((d) => new Date(d.time).getTime() >= cutoff);
-  }, [data, range]);
+  })();
+
+  const formatXAxis = useMemo(() => {
+    const daySet = new Set<string>();
+    return (iso: string) => {
+      const d = new Date(iso);
+      const dayKey = `${d.getMonth()}-${d.getDate()}`;
+      const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+      if (range > 48) {
+        return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${time}`;
+      }
+      daySet.add(dayKey);
+      if (daySet.size > 1) {
+        return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${time}`;
+      }
+      return time;
+    };
+  }, [range]);
 
   return (
     <div className="card-surface mb-6">
@@ -298,10 +329,11 @@ function PriceChart({ data }: { data: any[] }) {
             />
             <XAxis
               dataKey="time"
-              tickFormatter={formatTime}
+              tickFormatter={formatXAxis}
               tick={{ fill: "var(--color-text-muted)", fontSize: 11, fontFamily: "var(--font-mono)" }}
               axisLine={{ stroke: "var(--color-border-subtle)" }}
               tickLine={false}
+              interval={"preserveStartEnd"}
             />
             <YAxis
               domain={["auto", "auto"]}
@@ -333,8 +365,8 @@ function PriceChart({ data }: { data: any[] }) {
               type="monotone"
               dataKey="upperBand"
               stroke="transparent"
-              fill="url(#bandFill)"
-              fillOpacity={1}
+              fill="var(--color-accent-band-line)"
+              fillOpacity={0.12}
               dot={false}
               activeDot={false}
             />
@@ -343,7 +375,8 @@ function PriceChart({ data }: { data: any[] }) {
               dataKey="lowerBand"
               stroke="var(--color-accent-band-line)"
               strokeDasharray="4 4"
-              fill="transparent"
+              fill="var(--color-bg-elevated)"
+              fillOpacity={1}
               dot={false}
             />
             <Line

@@ -323,6 +323,46 @@ export function runBacktest(
   };
 }
 
+export interface RollingBandPoint {
+  mean: number;
+  upperBand: number;
+  lowerBand: number;
+}
+
+export function calculateRollingBands(
+  prices: { price: number; closeTime: Date }[],
+  windowSize: number,
+  k: number
+): Map<string, RollingBandPoint> {
+  const result = new Map<string, RollingBandPoint>();
+  const windowPrices: number[] = [];
+
+  for (let i = 0; i < prices.length; i++) {
+    windowPrices.push(prices[i].price);
+    if (windowPrices.length > windowSize) {
+      windowPrices.shift();
+    }
+    if (windowPrices.length >= 2) {
+      const filtered = windowPrices.length >= 10
+        ? windowPrices.filter((p) => {
+            const m = windowPrices.reduce((a, b) => a + b, 0) / windowPrices.length;
+            const s = Math.sqrt(windowPrices.reduce((sum, p) => sum + Math.pow(p - m, 2), 0) / windowPrices.length);
+            return Math.abs(p - m) <= 3 * s;
+          })
+        : windowPrices;
+      const mean = filtered.reduce((a, b) => a + b, 0) / filtered.length;
+      const std = Math.sqrt(filtered.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / filtered.length);
+      result.set(prices[i].closeTime.toISOString(), {
+        mean,
+        upperBand: mean + k * std,
+        lowerBand: mean - k * std,
+      });
+    }
+  }
+
+  return result;
+}
+
 /**
  * Calculate position progress toward target
  */

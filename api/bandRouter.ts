@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, publicQuery } from "./middleware";
 import { getBandConfig, upsertBandConfig } from "./queries/bandConfigs";
 import { getPriceHistory } from "./queries/prices";
-import { calculateBands, calculateFeeBreakdown } from "./lib/math";
+import { calculateBands, calculateFeeBreakdown, calculateRollingBands } from "./lib/math";
 
 export const bandRouter = createRouter({
   getConfig: publicQuery
@@ -120,13 +120,23 @@ export const bandRouter = createRouter({
         config.profitMarginPct
       );
 
-      const recentPrices = prices.slice(-100).map((p) => ({
-        time: p.closeTime.toISOString(),
-        price: p.price,
-        upperBand: bands.mean + config.bandMultiplier * bands.std,
-        lowerBand: bands.mean - config.bandMultiplier * bands.std,
-        mean: bands.mean,
-      }));
+      const rollingBands = calculateRollingBands(
+        prices,
+        config.windowHours,
+        config.bandMultiplier
+      );
+
+      const recentPrices = prices.slice(-100).map((p) => {
+        const key = p.closeTime.toISOString();
+        const rb = rollingBands.get(key);
+        return {
+          time: key,
+          price: p.price,
+          upperBand: rb?.upperBand ?? bands.upperBand,
+          lowerBand: rb?.lowerBand ?? bands.lowerBand,
+          mean: rb?.mean ?? bands.mean,
+        };
+      });
 
       return { config, bands, fees, recentPrices };
     }),

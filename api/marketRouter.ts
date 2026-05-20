@@ -114,4 +114,38 @@ export const marketRouter = createRouter({
         return { synced: false, error: String(error) };
       }
     }),
+
+  exportRange: publicQuery
+    .input(
+      z.object({
+        symbol: z.string().default("BTCUSDT"),
+        from: z.string().optional(),
+        to: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const symbol = input.symbol || "BTCUSDT";
+      let query = getDb()
+        .select({
+          t: priceSnapshots.closeTime,
+          p: priceSnapshots.price,
+          o: priceSnapshots.open,
+          h: priceSnapshots.high,
+          l: priceSnapshots.low,
+          v: priceSnapshots.volume,
+        })
+        .from(priceSnapshots)
+        .where(eq(priceSnapshots.symbol, symbol))
+        .orderBy(priceSnapshots.closeTime);
+
+      const rows = await query;
+      return rows.map((r) => ({
+        t: r.t.getTime(),
+        p: r.p,
+        o: r.o,
+        h: r.h,
+        l: r.l,
+        v: r.v,
+      }));
+    }),
 });

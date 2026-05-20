@@ -9,7 +9,7 @@ let klineInterval: ReturnType<typeof setInterval> | null = null;
 
 async function syncLatestKline() {
   try {
-    const klines = await fetchBinanceKlines("BTCUSDT", "1h", 2);
+    const klines = await fetchBinanceKlines("BTCUSDT", "1m", 5);
     if (klines.length === 0) return;
 
     const latest = await getLatestPrice("BTCUSDT");

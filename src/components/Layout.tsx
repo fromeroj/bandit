@@ -27,7 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src="/bandit.png"
               alt="Bandit"
-              className="w-8 h-8 rounded-sm"
+              className="w-16 h-16 rounded-sm"
             />
             <span
               className="text-lg font-semibold tracking-tight"
