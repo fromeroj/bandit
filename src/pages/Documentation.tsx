@@ -350,98 +350,124 @@ export default function Documentation() {
       </DocCard>
 
       {/* ── 4. Trading Signals ── */}
-      <SectionHeader icon={Zap} title="4. Trading Signals & Strategy" id="trading-signals" />
+      <SectionHeader icon={Zap} title="4. Trading Strategy" id="trading-signals" />
       <DocCard>
         <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--color-text-secondary)" }}>
-          Bandit uses a volume-filtered mean reversion strategy. The goal is to profit from Bitcoin's constant oscillation — not to bet on directional moves.
+          Bandit profits from Bitcoin's constant oscillation using an accumulative crossing strategy with a pending unit system. One unit = 0.00125 BTC (~$97).
         </p>
 
-        <div className="data-label mb-2">The Strategy</div>
+        <div className="data-label mb-2">Setup</div>
         <div
           className="p-3 rounded-sm mb-4"
-          style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}
+          style={{ background: "var(--color-bg-surface)" }}
         >
-          <div className="text-xs leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
-            <strong style={{ color: "var(--color-text-primary)" }}>Buy</strong> when price crosses below the lower band (oversold in a calm market).<br />
-            <strong style={{ color: "var(--color-text-primary)" }}>Sell</strong> when price crosses above the upper band (overbought) or reaches the fee-adjusted target.<br />
-            <strong style={{ color: "var(--color-text-primary)" }}>Stay out</strong> when volume spikes above 2x average — this means a crash or pump is happening and mean reversion will fail.
-          </div>
-        </div>
-
-        <div className="data-label mb-2">Signal Types</div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div
-            className="p-3 rounded-sm"
-            style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}
-          >
-            <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-accent-buy)" }}>BUY</div>
-            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Price fell below lower band AND volume is normal. The price is expected to revert upward toward the mean.
+          <div className="grid grid-cols-3 gap-4 text-xs">
+            <div>
+              <div className="font-medium mb-1" style={{ color: "var(--color-accent-buy)" }}>BTC Reserve</div>
+              <div style={{ color: "var(--color-text-primary)", fontFamily: "var(--font-mono)" }}>100 units</div>
+              <div style={{ color: "var(--color-text-muted)" }}>~$9,700</div>
             </div>
-            <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-              price {"<="} lowerBand AND volRatio {"<"} 2.0
+            <div>
+              <div className="font-medium mb-1" style={{ color: "var(--color-accent-neutral)" }}>USDT Reserve</div>
+              <div style={{ color: "var(--color-text-primary)", fontFamily: "var(--font-mono)" }}>$5,000</div>
+              <div style={{ color: "var(--color-text-muted)" }}>For buying at dips</div>
             </div>
-          </div>
-          <div
-            className="p-3 rounded-sm"
-            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
-          >
-            <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-accent-sell)" }}>SELL</div>
-            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Price rose above upper band AND volume is normal. The price is expected to revert downward toward the mean.
-            </div>
-            <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-              price {">="} upperBand AND volRatio {"<"} 2.0
-            </div>
-          </div>
-          <div
-            className="p-3 rounded-sm"
-            style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)" }}
-          >
-            <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-text-muted)" }}>HOLD</div>
-            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Price is within the bands. No action needed — wait for the next signal.
-            </div>
-            <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-              lowerBand {"<"} price {"<"} upperBand
-            </div>
-          </div>
-          <div
-            className="p-3 rounded-sm"
-            style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}
-          >
-            <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-accent-fee)" }}>SKIP</div>
-            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Volume spike detected ({">"}2x average). A crash or bull run is likely underway. Do not trade mean reversion here.
-            </div>
-            <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-              volRatio {">="} 2.0
+            <div>
+              <div className="font-medium mb-1" style={{ color: "var(--color-accent-band-line)" }}>Window</div>
+              <div style={{ color: "var(--color-text-primary)", fontFamily: "var(--font-mono)" }}>12h / 2σ</div>
+              <div style={{ color: "var(--color-text-muted)" }}>720 candles rolling</div>
             </div>
           </div>
         </div>
 
-        <div className="data-label mb-2">Volume Regime</div>
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="p-2 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-buy)" }}>
-            <div className="text-xs font-medium" style={{ color: "var(--color-accent-buy)" }}>Calm (Ranging)</div>
-            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>volRatio {"<"} 0.5x</div>
-            <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>Low volume, price oscillates. Safe to trade.</div>
+        <div className="data-label mb-2">The Mechanic: Pending Units</div>
+        <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--color-text-secondary)" }}>
+          The strategy tracks <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>pendingUnits</span> — the net position accumulated from same-direction crossings. When the opposite signal fires, ALL pending units are closed and 1 new unit is opened in the new direction.
+        </p>
+
+        <CodeBlock>{`State: pendingUnits (positive=long, negative=short)
+
+At LOWER band crossing (buy signal):
+  toCover = |pendingUnits|  (if negative, cover shorts)
+  buy toCover + 1 unit     (close shorts, go long 1)
+  pendingUnits = (pendingUnits < 0 ? 0 : pendingUnits) + 1
+
+At UPPER band crossing (sell signal):
+  toClose = pendingUnits   (if positive, close longs)
+  sell toClose + 1 unit    (close longs, go short 1)
+  pendingUnits = (pendingUnits > 0 ? 0 : pendingUnits) - 1
+
+Consecutive same-direction: just adds 1 unit
+Opposite direction: CLOSE ALL + swing 1 the other way`}</CodeBlock>
+
+        <div className="data-label mt-4 mb-2">Example Trace</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs" style={{ fontFamily: "var(--font-mono)" }}>
+            <thead>
+              <tr style={{ background: "var(--color-bg-surface)" }}>
+                <th className="px-2 py-1 text-left" style={{ color: "var(--color-text-muted)" }}>Signal</th>
+                <th className="px-2 py-1 text-left" style={{ color: "var(--color-text-muted)" }}>Price</th>
+                <th className="px-2 py-1 text-left" style={{ color: "var(--color-text-muted)" }}>Action</th>
+                <th className="px-2 py-1 text-left" style={{ color: "var(--color-text-muted)" }}>Pending</th>
+                <th className="px-2 py-1 text-left" style={{ color: "var(--color-text-muted)" }}>BTC Units</th>
+              </tr>
+            </thead>
+            <tbody style={{ color: "var(--color-text-secondary)" }}>
+              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                <td className="px-2 py-1">Start</td><td className="px-2 py-1">-</td>
+                <td className="px-2 py-1">-</td><td className="px-2 py-1">0</td><td className="px-2 py-1">100</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                <td className="px-2 py-1" style={{ color: "var(--color-accent-buy)" }}>Lower</td><td className="px-2 py-1">$76k</td>
+                <td className="px-2 py-1">buy 1</td><td className="px-2 py-1">+1</td><td className="px-2 py-1">101</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                <td className="px-2 py-1" style={{ color: "var(--color-accent-buy)" }}>Lower</td><td className="px-2 py-1">$75.5k</td>
+                <td className="px-2 py-1">buy 1</td><td className="px-2 py-1">+2</td><td className="px-2 py-1">102</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                <td className="px-2 py-1" style={{ color: "var(--color-accent-sell)" }}>Upper</td><td className="px-2 py-1">$78k</td>
+                <td className="px-2 py-1">sell 2+1=3</td><td className="px-2 py-1">-1</td><td className="px-2 py-1">99</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                <td className="px-2 py-1" style={{ color: "var(--color-accent-sell)" }}>Upper</td><td className="px-2 py-1">$78.5k</td>
+                <td className="px-2 py-1">sell 1</td><td className="px-2 py-1">-2</td><td className="px-2 py-1">98</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-1" style={{ color: "var(--color-accent-buy)" }}>Lower</td><td className="px-2 py-1">$76.5k</td>
+                <td className="px-2 py-1">buy 2+1=3</td><td className="px-2 py-1">+1</td><td className="px-2 py-1">101</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="data-label mt-4 mb-2">May 2026 Results (Live Simulation)</div>
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="p-2 rounded-sm text-center" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-buy)" }}>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>P&L</div>
+            <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-buy)" }}>+$207</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>+1.43%</div>
           </div>
-          <div className="p-2 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-neutral)" }}>
-            <div className="text-xs font-medium" style={{ color: "var(--color-accent-neutral)" }}>Normal</div>
-            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>0.5x - 2.0x</div>
-            <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>Typical activity. Signals active.</div>
+          <div className="p-2 rounded-sm text-center" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-neutral)" }}>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Win Rate</div>
+            <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>74.2%</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>72W / 25L</div>
           </div>
-          <div className="p-2 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-sell)" }}>
-            <div className="text-xs font-medium" style={{ color: "var(--color-accent-sell)" }}>Spike (Trending)</div>
-            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>volRatio {">"} 2.0x</div>
-            <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>Crash or bull run. Stay out.</div>
+          <div className="p-2 rounded-sm text-center" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-fee)" }}>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Fees</div>
+            <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-fee)" }}>$44.91</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>maker + taker</div>
+          </div>
+          <div className="p-2 rounded-sm text-center" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-band-line)" }}>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Trades</div>
+            <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-band-line)" }}>229</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>97 closed</div>
           </div>
         </div>
 
-        <div className="data-label mb-2">Why This Works</div>
+        <div className="data-label mb-2">Why It Works</div>
         <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
-          Bitcoin spends roughly 70% of its time in low-to-moderate volume ranging periods — bouncing between support and resistance without a clear directional trend. During these periods, Bollinger Bands reliably capture the oscillation range. The remaining 30% of the time (high-volume events: liquidation cascades, whale moves, exchange news), mean reversion strategies fail because price trends hard in one direction. The volume filter detects these events and suppresses trading signals, protecting you from catching falling knives or selling into a rally.
+          Bitcoin oscillates constantly. With a 12h rolling window, bands are tight enough to produce frequent crossings (~15/day) but wide enough to filter noise. The accumulative system captures multi-touch moves — if price hits the lower band 3 times before recovering, you accumulate 3 units and sell them all at the first upper crossing plus 1 extra. This maximizes capture of each oscillation cycle while the "+1 unit" keeps you positioned for the next move.
         </p>
       </DocCard>
 
