@@ -735,36 +735,64 @@ function ThresholdVisualizer({ fees }: { fees: any }) {
 /* ─── Trade History Table ─── */
 function TradeHistory() {
   const { data: trades } = trpc.trade.list.useQuery(
-    { symbol: "BTCUSDT", limit: 20 },
+    { symbol: "BTCUSDT", limit: 50 },
     { refetchInterval: 30000 }
   );
 
+  const closedTrades = trades?.filter(t => t.status === "closed") || [];
+  const totalPnl = closedTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const wins = closedTrades.filter(t => (t.netPnl || 0) > 0).length;
+  const totalFees = closedTrades.reduce((s, t) => s + (t.makerFee || 0) + (t.takerFee || 0) + (t.withdrawalFee || 0), 0);
+
   return (
     <div className="card-surface">
-      <h3
-        className="text-lg font-semibold mb-4"
-        style={{
-          fontFamily: "var(--font-sans)",
-          color: "var(--color-text-primary)",
-        }}
-      >
-        Trade History
-      </h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3
+          className="text-lg font-semibold"
+          style={{
+            fontFamily: "var(--font-sans)",
+            color: "var(--color-text-primary)",
+          }}
+        >
+          Trade History
+        </h3>
+        {closedTrades.length > 0 && (
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Trades</div>
+              <div className="text-xs font-medium" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-primary)" }}>
+                {closedTrades.length} ({wins}W / {closedTrades.length - wins}L)
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Fees Paid</div>
+              <div className="text-xs font-medium" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-fee)" }}>
+                ${totalFees.toFixed(4)}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Net P&L</div>
+              <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-mono)", color: totalPnl >= 0 ? "var(--color-accent-buy)" : "var(--color-accent-sell)" }}>
+                ${totalPnl.toFixed(4)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {(!trades || trades.length === 0) ? (
         <div
           className="text-center py-8"
           style={{ color: "var(--color-text-muted)" }}
         >
-          No trades yet. Signals will trigger simulated trades when price
-          touches the band boundaries.
+          No trades yet.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr style={{ background: "var(--color-bg-surface)" }}>
-                {["Entry", "Exit", "Hold Time", "Gross P&L", "Fees", "Net P&L", "Status"].map(
+                {["Qty (BTC)", "Entry", "Exit", "Hold", "Gross", "Fees", "Net P&L", ""].map(
                   (h) => (
                     <th
                       key={h}
@@ -789,7 +817,7 @@ function TradeHistory() {
                     ? "var(--color-accent-buy)"
                     : (trade.netPnl || 0) < 0
                     ? "var(--color-accent-sell)"
-                    : "var(--color-text-muted)";
+                    : "var(--color-text-muted";
 
                 const statusLabel =
                   trade.status === "open"
@@ -808,6 +836,17 @@ function TradeHistory() {
                     }}
                   >
                     <td className="px-3 py-2">
+                      <span
+                        className="text-xs"
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--color-text-primary)",
+                        }}
+                      >
+                        {trade.quantity?.toFixed(5) ?? "-"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
                       <div
                         className="text-xs"
                         style={{
@@ -822,7 +861,7 @@ function TradeHistory() {
                         style={{ color: "var(--color-text-muted)" }}
                       >
                         {trade.enteredAt
-                          ? new Date(trade.enteredAt).toLocaleDateString()
+                          ? new Date(trade.enteredAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
                           : "-"}
                       </div>
                     </td>
@@ -838,6 +877,14 @@ function TradeHistory() {
                           ? `$${formatPrice(trade.exitPrice)}`
                           : "-"}
                       </div>
+                      {trade.exitedAt && (
+                        <div
+                          className="text-[10px]"
+                          style={{ color: "var(--color-text-muted)" }}
+                        >
+                          {new Date(trade.exitedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
+                      )}
                     </td>
                     <td
                       className="px-3 py-2 text-xs"
@@ -860,7 +907,7 @@ function TradeHistory() {
                             : "var(--color-accent-sell)",
                       }}
                     >
-                      {trade.grossPnl ? `$${trade.grossPnl.toFixed(2)}` : "-"}
+                      {trade.grossPnl != null ? `$${trade.grossPnl.toFixed(4)}` : "-"}
                     </td>
                     <td
                       className="px-3 py-2 text-xs"
@@ -874,7 +921,7 @@ function TradeHistory() {
                             (trade.makerFee || 0) +
                             (trade.takerFee || 0) +
                             (trade.withdrawalFee || 0)
-                          ).toFixed(2)}`
+                          ).toFixed(4)}`
                         : "-"}
                     </td>
                     <td
@@ -884,7 +931,7 @@ function TradeHistory() {
                         color: statusColor,
                       }}
                     >
-                      {trade.netPnl ? `$${trade.netPnl.toFixed(2)}` : "-"}
+                      {trade.netPnl != null ? `$${trade.netPnl.toFixed(4)}` : "-"}
                     </td>
                     <td className="px-3 py-2">
                       <span
