@@ -13,7 +13,8 @@ const VOL_SPIKE_RATIO = 2.0;
 async function backfill() {
   const db = getDb();
 
-  console.log("Fetching prices from May 1st...");
+  console.log("Fetching prices with 48h lookback...");
+  const lookbackStart = new Date("2026-04-29T00:00:00Z");
   const rows = await db
     .select({
       t: priceSnapshots.closeTime,
@@ -24,15 +25,15 @@ async function backfill() {
     .where(
       and(
         eq(priceSnapshots.symbol, "BTCUSDT"),
-        gte(priceSnapshots.closeTime, new Date("2026-05-01T00:00:00Z"))
+        gte(priceSnapshots.closeTime, lookbackStart)
       )
     )
     .orderBy(priceSnapshots.closeTime);
 
-  console.log(`Got ${rows.length} candles`);
+  console.log(`Got ${rows.length} candles (incl. lookback)`);
 
+  const may1 = new Date("2026-05-01T00:00:00Z").getTime();
   const windowPrices: number[] = [];
-  const windowVols: number[] = [];
   const tradeList: any[] = [];
   let inPosition = false;
   let entryPrice = 0;
@@ -40,13 +41,10 @@ async function backfill() {
 
   for (let i = 0; i < rows.length; i++) {
     const price = +rows[i].p;
-    const vol = +(rows[i].v ?? 0);
     const time = rows[i].t;
 
     windowPrices.push(price);
-    windowVols.push(vol);
     if (windowPrices.length > WINDOW_SIZE) windowPrices.shift();
-    if (windowVols.length > VOL_SPIKE_RATIO * 1000) windowVols.shift();
 
     if (windowPrices.length < 2) continue;
 
@@ -56,15 +54,14 @@ async function backfill() {
     const upperBand = mean + K * std;
     const lowerBand = mean - K * std;
 
-    const avgVol = windowVols.reduce((a, b) => a + b, 0) / windowVols.length;
-    const volRatio = avgVol > 0 ? vol / avgVol : 1;
-    const volumeSpike = volRatio >= VOL_SPIKE_RATIO;
+    const ts = time.getTime();
+    if (ts < may1) continue;
 
-    if (!inPosition && !volumeSpike && price <= lowerBand) {
+    if (!inPosition && price <= lowerBand) {
       inPosition = true;
       entryPrice = price;
       entryTime = time;
-    } else if (inPosition && !volumeSpike && price >= upperBand) {
+    } else if (inPosition && price >= upperBand) {
       const exitPrice = price;
       const entryValue = BTC_QTY * entryPrice;
       const exitValue = BTC_QTY * exitPrice;
