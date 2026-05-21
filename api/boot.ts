@@ -12,8 +12,8 @@ import { getDb } from "./queries/connection";
 import { priceSnapshots } from "@db/schema";
 import { eq, gte, and, desc, sql as sqlOrm } from "drizzle-orm";
 
-const WINDOW_SIZE = 48 * 60;
-const VOL_WINDOW = 48 * 60;
+const WINDOW_SIZE = 12 * 60;
+const VOL_WINDOW = 12 * 60;
 const K = 2.0;
 
 function computeRollingBands(rows: { t: number; p: number; v: number }[]): number[][] {

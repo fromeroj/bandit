@@ -13,7 +13,7 @@ export async function getBandConfig(userId: number = 1, symbol: string = "BTCUSD
       id: 0,
       userId,
       symbol,
-      windowHours: 48,
+      windowHours: 12,
       bandMultiplier: 2.0,
       profitMarginPct: 0.15,
       useBnbDiscount: false,

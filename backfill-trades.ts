@@ -1,25 +1,23 @@
 import "dotenv/config";
 import { getDb } from "./api/queries/connection";
 import { priceSnapshots, trades } from "./db/schema";
-import { eq, gte, and, desc } from "drizzle-orm";
+import { eq, gte, and } from "drizzle-orm";
 
 const BTC_QTY = 0.00125;
 const MAKER_FEE_PCT = 0.1;
 const TAKER_FEE_PCT = 0.1;
-const WINDOW_SIZE = 48 * 60;
+const WINDOW_SIZE = 12 * 60;
 const K = 2.0;
-const VOL_SPIKE_RATIO = 2.0;
 
 async function backfill() {
   const db = getDb();
 
-  console.log("Fetching prices with 48h lookback...");
-  const lookbackStart = new Date("2026-04-29T00:00:00Z");
+  const lookbackStart = new Date("2026-04-30T12:00:00Z");
+  console.log("Fetching prices with 12h lookback...");
   const rows = await db
     .select({
       t: priceSnapshots.closeTime,
       p: priceSnapshots.price,
-      v: priceSnapshots.volume,
     })
     .from(priceSnapshots)
     .where(
@@ -30,14 +28,15 @@ async function backfill() {
     )
     .orderBy(priceSnapshots.closeTime);
 
-  console.log(`Got ${rows.length} candles (incl. lookback)`);
+  console.log(`Got ${rows.length} candles`);
 
   const may1 = new Date("2026-05-01T00:00:00Z").getTime();
   const windowPrices: number[] = [];
+  const buyQueue: { price: number; time: Date }[] = [];
   const tradeList: any[] = [];
-  let inPosition = false;
-  let entryPrice = 0;
-  let entryTime: Date | null = null;
+
+  let belowLower = false;
+  let aboveUpper = false;
 
   for (let i = 0; i < rows.length; i++) {
     const price = +rows[i].p;
@@ -45,7 +44,6 @@ async function backfill() {
 
     windowPrices.push(price);
     if (windowPrices.length > WINDOW_SIZE) windowPrices.shift();
-
     if (windowPrices.length < 2) continue;
 
     const mean = windowPrices.reduce((a, b) => a + b, 0) / windowPrices.length;
@@ -54,28 +52,32 @@ async function backfill() {
     const upperBand = mean + K * std;
     const lowerBand = mean - K * std;
 
-    const ts = time.getTime();
-    if (ts < may1) continue;
+    if (time.getTime() < may1) continue;
 
-    if (!inPosition && price <= lowerBand) {
-      inPosition = true;
-      entryPrice = price;
-      entryTime = time;
-    } else if (inPosition && price >= upperBand) {
-      const exitPrice = price;
-      const entryValue = BTC_QTY * entryPrice;
-      const exitValue = BTC_QTY * exitPrice;
+    const wasBelowLower = belowLower;
+    const wasAboveUpper = aboveUpper;
+    belowLower = price <= lowerBand;
+    aboveUpper = price >= upperBand;
+
+    if (!wasBelowLower && belowLower) {
+      buyQueue.push({ price, time });
+    }
+
+    if (!wasAboveUpper && aboveUpper && buyQueue.length > 0) {
+      const buy = buyQueue.shift()!;
+      const entryValue = BTC_QTY * buy.price;
+      const exitValue = BTC_QTY * price;
       const makerFee = entryValue * MAKER_FEE_PCT / 100;
       const takerFee = exitValue * TAKER_FEE_PCT / 100;
       const grossPnl = exitValue - entryValue;
       const netPnl = grossPnl - makerFee - takerFee;
-      const holdingMinutes = Math.round((time.getTime() - (entryTime?.getTime() ?? 0)) / 60000);
+      const holdingMinutes = Math.round((time.getTime() - buy.time.getTime()) / 60000);
 
       tradeList.push({
         symbol: "BTCUSDT",
         side: "buy" as const,
-        entryPrice,
-        exitPrice,
+        entryPrice: buy.price,
+        exitPrice: price,
         targetPrice: upperBand,
         quantity: BTC_QTY,
         makerFee,
@@ -84,32 +86,28 @@ async function backfill() {
         grossPnl,
         netPnl,
         status: "closed" as const,
-        enteredAt: entryTime!,
+        enteredAt: buy.time,
         exitedAt: time,
         holdingMinutes: Math.max(1, holdingMinutes),
       });
-
-      inPosition = false;
-      entryPrice = 0;
-      entryTime = null;
     }
   }
 
-  if (inPosition && entryPrice > 0) {
+  buyQueue.forEach((buy) => {
     const lastPrice = rows[rows.length - 1].p;
     const lastTime = rows[rows.length - 1].t;
-    const entryValue = BTC_QTY * entryPrice;
+    const entryValue = BTC_QTY * buy.price;
     const exitValue = BTC_QTY * lastPrice;
     const makerFee = entryValue * MAKER_FEE_PCT / 100;
     const takerFee = exitValue * TAKER_FEE_PCT / 100;
     const grossPnl = exitValue - entryValue;
     const netPnl = grossPnl - makerFee - takerFee;
-    const holdingMinutes = Math.round((lastTime.getTime() - (entryTime?.getTime() ?? 0)) / 60000);
+    const holdingMinutes = Math.round((lastTime.getTime() - buy.time.getTime()) / 60000);
 
     tradeList.push({
       symbol: "BTCUSDT",
       side: "buy" as const,
-      entryPrice,
+      entryPrice: buy.price,
       exitPrice: lastPrice,
       targetPrice: null,
       quantity: BTC_QTY,
@@ -119,11 +117,11 @@ async function backfill() {
       grossPnl,
       netPnl,
       status: "open" as const,
-      enteredAt: entryTime!,
+      enteredAt: buy.time,
       exitedAt: lastTime,
       holdingMinutes: Math.max(1, holdingMinutes),
     });
-  }
+  });
 
   console.log(`\nClearing old trades...`);
   await db.delete(trades);
@@ -134,18 +132,23 @@ async function backfill() {
     await db.insert(trades).values(batch);
   }
 
-  const wins = tradeList.filter(t => t.netPnl > 0).length;
-  const losses = tradeList.filter(t => t.netPnl < 0).length;
-  const totalPnl = tradeList.reduce((s, t) => s + t.netPnl, 0);
-  const avgHold = tradeList.reduce((s, t) => s + (t.holdingMinutes || 0), 0) / tradeList.length;
+  const closedTrades = tradeList.filter(t => t.status === "closed");
+  const wins = closedTrades.filter(t => t.netPnl > 0).length;
+  const losses = closedTrades.filter(t => t.netPnl < 0).length;
+  const totalPnl = closedTrades.reduce((s, t) => s + t.netPnl, 0);
+  const totalFees = closedTrades.reduce((s, t) => s + t.makerFee + t.takerFee, 0);
+  const avgHold = closedTrades.length > 0
+    ? closedTrades.reduce((s, t) => s + t.holdingMinutes, 0) / closedTrades.length
+    : 0;
 
-  console.log(`\n=== Results ===`);
-  console.log(`Trades: ${tradeList.length}`);
-  console.log(`Wins: ${wins}, Losses: ${losses}`);
-  console.log(`Win rate: ${(wins / tradeList.length * 100).toFixed(1)}%`);
-  console.log(`Total P&L: $${totalPnl.toFixed(2)}`);
-  console.log(`Avg hold: ${avgHold.toFixed(0)} min`);
-  console.log(`Open: ${tradeList.filter(t => t.status === 'open').length}`);
+  console.log(`\n=== Results (12h window, every crossing) ===`);
+  console.log(`Closed trades: ${closedTrades.length} (${wins}W / ${losses}L)`);
+  console.log(`Open positions: ${tradeList.length - closedTrades.length}`);
+  console.log(`Win rate: ${closedTrades.length > 0 ? (wins / closedTrades.length * 100).toFixed(1) : 0}%`);
+  console.log(`Total P&L: $${totalPnl.toFixed(4)}`);
+  console.log(`Total fees: $${totalFees.toFixed(4)}`);
+  console.log(`Avg hold: ${avgHold.toFixed(0)} min (${(avgHold / 60).toFixed(1)}h)`);
+  console.log(`Unmatched buys: ${buyQueue.length}`);
 
   process.exit(0);
 }
