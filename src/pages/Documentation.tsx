@@ -153,7 +153,7 @@ export default function Documentation() {
             fontFamily: "var(--font-mono)",
           }}
         >
-          v8335440
+          v2025.05
         </span>
       </div>
 
@@ -185,10 +185,10 @@ export default function Documentation() {
       <SectionHeader icon={TrendingUp} title="1. Overview" id="overview" />
       <DocCard>
         <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
-          <strong style={{ color: "var(--color-text-primary)" }}>Bandit</strong> is a BTC Mean Reversion Arbitrage Dashboard — a full-stack web application for modeling, visualizing, and backtesting Bollinger Band-based mean reversion trading strategies on BTC/USDT. It combines real-time band calculation, fee-aware profit threshold computation, paper trading, and exhaustive parameter optimization into a single tool.
+          <strong style={{ color: "var(--color-text-primary)" }}>Bandit</strong> is a BTC Mean Reversion Dashboard that trades the constant oscillation of Bitcoin's price in calm markets. Rather than betting on crashes or bull runs, Bandit profits from the natural noise — buying when price dips below the lower Bollinger Band and selling when it returns to the upper band.
         </p>
         <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
-          The core hypothesis is simple: Bitcoin prices oscillate around a rolling mean. When price deviates significantly below the mean (lower band), it presents a buying opportunity. When it deviates above (upper band), it signals a selling opportunity. The challenge is determining whether the spread between entry and exit is wide enough to overcome exchange fees and withdrawal costs — Bandit answers this precisely.
+          A volume regime filter automatically suppresses signals during high-volume events (crashes, pumps, breakouts) where mean reversion fails, and during very low-volume periods where price action is too random. The sweet spot is normal volume — the boring, sideways oscillation that happens most of the time.
         </p>
         <div
           className="p-3 rounded-sm"
@@ -199,14 +199,14 @@ export default function Documentation() {
           </div>
           <ul className="space-y-1">
             {[
-              "Rolling-window Bollinger Band calculation with configurable parameters",
-              "Fee-optimized break-even and target price computation (maker, taker, withdrawal)",
-              "Full backtest engine with Sharpe ratio, max drawdown, and profit factor",
-              "Grid search across 25 parameter combinations (5 windows x 5 multipliers)",
-              "Paper trade tracking with entry/exit, P&L, and holding time",
-              "30 days of real hourly BTC/USDT data (720 candles) pre-seeded",
-              "Real-time auto-refresh every 30 seconds",
-              "BNB fee discount support (0.075% maker/taker)",
+              "1-minute candle resolution with 200k+ rows of real Binance data",
+              "Rolling 48h Bollinger Bands calculated server-side per candle",
+              "Volume regime detection: calm (ranging), normal, spike (trending)",
+              "Signal suppression during volume spikes — stay out of crashes and bull runs",
+              "Browser-side SQLite (sql.js WASM) with IndexedDB persistence",
+              "Full backtest engine with Sharpe ratio, max drawdown, profit factor",
+              "Fee-aware break-even calculation (maker, taker, withdrawal)",
+              "Incremental sync every 20s — only new data transferred",
             ].map((item) => (
               <li key={item} className="flex items-start gap-2 text-xs" style={{ color: "var(--color-text-secondary)" }}>
                 <span style={{ color: "var(--color-accent-buy)" }}>+</span>
@@ -221,49 +221,38 @@ export default function Documentation() {
       <SectionHeader icon={Cpu} title="2. Mathematical Model" id="math-model" />
       <DocCard>
         <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
-          The band detection uses a rolling-window Bollinger-style calculation. Over your configured window (default 48 hours of hourly candles), the system computes the arithmetic mean and population standard deviation of closing prices. These statistics define an upper and lower envelope around the mean price.
+          Bands are calculated server-side using a rolling 48-hour window of 1-minute candles (2,880 data points). For each candle, the server computes the mean and standard deviation of all prices in the trailing window, then applies the Bollinger multiplier to define upper and lower boundaries. This means bands change at every point on the chart — they're not flat lines.
         </p>
 
-        <div className="data-label mb-2">Step 1: Outlier Filtering</div>
-        <p className="text-xs mb-3" style={{ color: "var(--color-text-secondary)" }}>
-          Before computing bands, prices beyond 3 standard deviations from the raw mean are excluded. This prevents flash crashes or liquidation cascades from skewing the band calculation. If the window has fewer than 10 data points, filtering is skipped entirely to preserve statistical significance.
-        </p>
-        <CodeBlock>{`function filterOutliers(prices: number[]): number[] {
-  const mean = average(prices);
-  const std = populationStdDev(prices);
-  const threshold = 3 * std;
-  return prices.filter(p => Math.abs(p - mean) <= threshold);
-}`}</CodeBlock>
-
-        <div className="data-label mt-4 mb-2">Step 2: Band Calculation</div>
+        <div className="data-label mb-2">Band Calculation</div>
         <Formula
-          label="Mean"
-          formula="mean = (1/n) * sum(filtered_prices)"
-          description="Simple arithmetic mean of filtered price data over the window"
+          label="Mean (rolling)"
+          formula="mean = (1/n) * sum(prices in window)"
+          description="Simple arithmetic mean over the trailing 2,880 one-minute candles"
         />
         <Formula
           label="Standard Deviation"
           formula="std = sqrt( (1/n) * sum((price - mean)^2) )"
-          description="Population standard deviation (not sample std dev) — uses all data points in the window"
+          description="Population standard deviation of prices in the window"
         />
         <Formula
           label="Upper Band"
           formula="upperBand = mean + k * std"
-          description="The sell threshold: when price touches or exceeds this level, a SELL signal is generated"
+          description="Sell threshold: price above this is overbought"
         />
         <Formula
           label="Lower Band"
           formula="lowerBand = mean - k * std"
-          description="The buy threshold: when price touches or falls below this level, a BUY signal is generated"
+          description="Buy threshold: price below this is oversold"
         />
         <Formula
-          label="Band Width"
-          formula="bandWidth = upperBand - lowerBand = 2 * k * std"
-          description="The absolute dollar distance between bands; percentage = (bandWidth / mean) * 100"
+          label="Volume Ratio"
+          formula="volumeRatio = currentVolume / avgVolume(window)"
+          description="Used to detect market regime. Ratio > 2x = spike (trending), less than 0.5x = calm (ranging)"
         />
 
         <p className="text-xs mt-3" style={{ color: "var(--color-text-muted)" }}>
-          The multiplier <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>k</span> controls the band width. With k=2.0 (default), bands capture ~95.4% of price action in a normal distribution. Higher k values produce wider bands with fewer but more significant signals; lower k values produce tighter bands with more frequent but less reliable signals.
+          The multiplier <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>k</span> defaults to 2.0, capturing ~95.4% of price action. All calculations happen server-side and the pre-computed values are sent to the browser — no client-side math needed.
         </p>
       </DocCard>
 
@@ -361,53 +350,98 @@ export default function Documentation() {
       </DocCard>
 
       {/* ── 4. Trading Signals ── */}
-      <SectionHeader icon={Zap} title="4. Trading Signals" id="trading-signals" />
+      <SectionHeader icon={Zap} title="4. Trading Signals & Strategy" id="trading-signals" />
       <DocCard>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
-          Signals are generated in real-time by comparing the current BTC price against the calculated band boundaries. The system produces three possible signals:
+        <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--color-text-secondary)" }}>
+          Bandit uses a volume-filtered mean reversion strategy. The goal is to profit from Bitcoin's constant oscillation — not to bet on directional moves.
         </p>
 
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="data-label mb-2">The Strategy</div>
+        <div
+          className="p-3 rounded-sm mb-4"
+          style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)" }}
+        >
+          <div className="text-xs leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+            <strong style={{ color: "var(--color-text-primary)" }}>Buy</strong> when price crosses below the lower band (oversold in a calm market).<br />
+            <strong style={{ color: "var(--color-text-primary)" }}>Sell</strong> when price crosses above the upper band (overbought) or reaches the fee-adjusted target.<br />
+            <strong style={{ color: "var(--color-text-primary)" }}>Stay out</strong> when volume spikes above 2x average — this means a crash or pump is happening and mean reversion will fail.
+          </div>
+        </div>
+
+        <div className="data-label mb-2">Signal Types</div>
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div
-            className="p-3 rounded-sm text-center"
+            className="p-3 rounded-sm"
             style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}
           >
             <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-accent-buy)" }}>BUY</div>
             <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Price has touched or fallen below the lower band
+              Price fell below lower band AND volume is normal. The price is expected to revert upward toward the mean.
             </div>
             <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-              price {"<="} lowerBand
+              price {"<="} lowerBand AND volRatio {"<"} 2.0
             </div>
           </div>
           <div
-            className="p-3 rounded-sm text-center"
+            className="p-3 rounded-sm"
             style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
           >
             <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-accent-sell)" }}>SELL</div>
             <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Price has touched or risen above the upper band
+              Price rose above upper band AND volume is normal. The price is expected to revert downward toward the mean.
             </div>
             <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
-              price {">="} upperBand
+              price {">="} upperBand AND volRatio {"<"} 2.0
             </div>
           </div>
           <div
-            className="p-3 rounded-sm text-center"
+            className="p-3 rounded-sm"
             style={{ background: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)" }}
           >
             <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-text-muted)" }}>HOLD</div>
             <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Price is within the band boundaries
+              Price is within the bands. No action needed — wait for the next signal.
             </div>
             <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
               lowerBand {"<"} price {"<"} upperBand
             </div>
           </div>
+          <div
+            className="p-3 rounded-sm"
+            style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}
+          >
+            <div className="text-sm font-semibold mb-1" style={{ color: "var(--color-accent-fee)" }}>SKIP</div>
+            <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+              Volume spike detected ({">"}2x average). A crash or bull run is likely underway. Do not trade mean reversion here.
+            </div>
+            <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
+              volRatio {">="} 2.0
+            </div>
+          </div>
         </div>
 
-        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          The Dashboard page shows a visual band position indicator — a horizontal bar with buy (green) and sell (red) zones, and a marker showing where the current price sits within the band. The signal badge updates in real-time with each refresh cycle.
+        <div className="data-label mb-2">Volume Regime</div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="p-2 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-buy)" }}>
+            <div className="text-xs font-medium" style={{ color: "var(--color-accent-buy)" }}>Calm (Ranging)</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>volRatio {"<"} 0.5x</div>
+            <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>Low volume, price oscillates. Safe to trade.</div>
+          </div>
+          <div className="p-2 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-neutral)" }}>
+            <div className="text-xs font-medium" style={{ color: "var(--color-accent-neutral)" }}>Normal</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>0.5x - 2.0x</div>
+            <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>Typical activity. Signals active.</div>
+          </div>
+          <div className="p-2 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-sell)" }}>
+            <div className="text-xs font-medium" style={{ color: "var(--color-accent-sell)" }}>Spike (Trending)</div>
+            <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>volRatio {">"} 2.0x</div>
+            <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>Crash or bull run. Stay out.</div>
+          </div>
+        </div>
+
+        <div className="data-label mb-2">Why This Works</div>
+        <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+          Bitcoin spends roughly 70% of its time in low-to-moderate volume ranging periods — bouncing between support and resistance without a clear directional trend. During these periods, Bollinger Bands reliably capture the oscillation range. The remaining 30% of the time (high-volume events: liquidation cascades, whale moves, exchange news), mean reversion strategies fail because price trends hard in one direction. The volume filter detects these events and suppresses trading signals, protecting you from catching falling knives or selling into a rally.
         </p>
       </DocCard>
 
@@ -540,8 +574,22 @@ export default function Documentation() {
       <SectionHeader icon={Server} title="8. API Reference (tRPC Routers)" id="api-reference" />
       <DocCard>
         <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
-          The backend exposes type-safe tRPC procedures at <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>/api/trpc/*</span>. All endpoints are public queries (no authentication required in the current deployment). The Hono server handles tRPC requests and serves the built React frontend.
+          The backend exposes type-safe tRPC procedures at <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>/api/trpc/*</span> and a dedicated bulk data endpoint at <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>/api/sync/prices</span> for the browser-side SQLite sync.
         </p>
+
+        <div className="data-label mb-2">Sync Endpoint (Non-tRPC)</div>
+        <div
+          className="p-2 rounded-sm mb-4"
+          style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-buy)" }}
+        >
+          <div className="text-xs font-medium" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-buy)" }}>GET /api/sync/prices</div>
+          <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>
+            Returns pre-calculated Bollinger Bands and volume data as compact JSON arrays. Accepts <span style={{ fontFamily: "var(--font-mono)" }}>after</span> (timestamp) for incremental sync. When after=0, returns all 200k+ rows with server-side band computation (~2.9MB). When after&gt;0, returns only new rows with lookback context for accurate bands.
+          </div>
+          <div className="text-[10px] mt-1" style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-muted)" }}>
+            Response: [[timestamp, price, mean, upperBand, lowerBand, volume, avgVolume], ...]
+          </div>
+        </div>
 
         <div className="space-y-4">
           {[
@@ -636,7 +684,7 @@ export default function Documentation() {
           },
           {
             name: "price_snapshots",
-            desc: "Historical hourly BTC/USDT prices from Binance. Each row is one candle with OHLCV data. Used for band calculation and backtesting. Currently holds 720 rows (30 days x 24 hours).",
+            desc: "Historical 1-minute BTC/USDT candles from Binance. Each row is one candle with OHLCV data. Currently holds 200k+ rows (Jan-May 2026). Used for server-side band calculation and backtesting.",
             cols: ["id (PK)", "symbol (BTCUSDT)", "price (close)", "open", "high", "low", "volume", "closeTime", "createdAt"],
           },
           {
@@ -696,18 +744,18 @@ export default function Documentation() {
               </span>
             </div>
             <p className="text-xs mb-2" style={{ color: "var(--color-text-secondary)" }}>
-              The main monitoring view. All data is fetched in a single <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>band.fullState</span> query for optimal performance.
+              The main monitoring view. Live price, bands, and signals are read from the browser's local SQLite database (synced every 20s). Fees and backtest come from tRPC.
             </p>
             <ul className="space-y-1 ml-6">
               {[
-                "Price Hero — current BTC/USDT price with live band position indicator and active signal badge",
-                "Band Position Visualizer — horizontal bar showing price location within buy/sell zones with band boundaries",
-                "Interactive Price Chart — ComposedChart (Recharts) with price line, upper/lower bands (dashed), mean line, and band fill area. Time range selector: 6H, 12H, 24H, 48H, 7D",
+                "Price Hero — live BTC/USDT price from local SQLite, band position indicator, signal badge, and volume regime status",
+                "Volume Regime — shows Calm (ranging, safe to trade), Normal, or Spike (trending, stay out)",
+                "Interactive Price Chart — price line, upper/lower bands, mean, and volume bars with dual Y-axis. Range selector: 6H, 12H, 24H, 48H, 14D, 1M",
                 "Fee Breakdown Panel — itemized maker, taker, and withdrawal fees in USD with percentages",
-                "Fee Composition Bar — stacked horizontal bar showing the proportion of each fee component relative to target gain",
-                "Threshold Visualizer — minimum spread and recommended target with break-even price",
-                "Trade History Table — recent trades with entry/exit prices, holding time, gross P&L, fees, net P&L, and status badges",
-                "Backtest Summary — six key metrics (win rate, trades, hold time, net profit, max drawdown, Sharpe ratio)",
+                "Fee Composition Bar — stacked horizontal bar showing proportion of each fee component",
+                "Threshold Visualizer — minimum spread, recommended target, break-even price",
+                "Trade History Table — recent trades with entry/exit, holding time, P&L, fees, status",
+                "Backtest Summary — win rate, total trades, avg hold time, net profit, max drawdown, Sharpe ratio",
               ].map((item) => (
                 <li key={item} className="text-xs flex items-start gap-2" style={{ color: "var(--color-text-secondary)" }}>
                   <span style={{ color: "var(--color-accent-band-line)" }}>-</span>
@@ -789,9 +837,14 @@ export default function Documentation() {
     v
   Hono Server (port 3000)
     |
+    +-- /api/sync/prices --> Bollinger Bands + Volume (server-side calc)
+    |       |
+    |       +-- Initial: all 200k rows with pre-computed bands (~2.9MB)
+    |       +-- Incremental: new rows only (every 20s from browser)
+    |
     +-- /api/trpc/* --> tRPC Fetch Adapter --> Router
     |                                        |
-    |                   +-- bandRouter    (bands, config, fullState)
+    |                   +-- bandRouter    (config, fullState, fees)
     |                   +-- marketRouter  (prices, sync)
     |                   +-- feeRouter     (fee calculation)
     |                   +-- tradeRouter   (CRUD, simulate)
@@ -803,21 +856,27 @@ export default function Documentation() {
     |
     +-- /* --> Static File Server (dist/public/)
                     |
-                    index.html + JS + CSS (React SPA)`}</CodeBlock>
+                    index.html + JS + CSS + sql-wasm.wasm (React SPA)
+
+  Browser-Side Data Flow:
+    sql.js (WASM SQLite) <--> IndexedDB (persisted across sessions)
+         |
+         +-- getLatest() --> Hero: price, bands, signal, volume regime
+         +-- queryChart() --> Price chart with bands and volume bars`}</CodeBlock>
 
         <div className="data-label mt-4 mb-2">Technology Stack</div>
         <div className="grid grid-cols-2 gap-2">
           {[
             { layer: "Frontend", tech: "React 19 + TypeScript" },
             { layer: "Build", tech: "Vite 7 + esbuild" },
-            { layer: "UI", tech: "Tailwind CSS + shadcn/ui (40+ components)" },
-            { layer: "Charts", tech: "Recharts (ComposedChart, BarChart, LineChart)" },
-            { layer: "API Layer", tech: "tRPC 11 (end-to-end type safety)" },
+            { layer: "UI", tech: "Tailwind CSS + shadcn/ui" },
+            { layer: "Charts", tech: "Recharts (ComposedChart)" },
+            { layer: "Local DB", tech: "sql.js WASM + IndexedDB" },
+            { layer: "API Layer", tech: "tRPC 11 (type-safe)" },
             { layer: "Server", tech: "Hono 4 (Node.js)" },
-            { layer: "ORM", tech: "Drizzle ORM 0.45 (MySQL, planetscale mode)" },
+            { layer: "ORM", tech: "Drizzle ORM (MySQL)" },
             { layer: "Database", tech: "MySQL 8" },
-            { layer: "Auth", tech: "Kimi OAuth (Jose JWT)" },
-            { layer: "Deployment", tech: "nginx + Let's Encrypt SSL" },
+            { layer: "Data Source", tech: "Binance REST API (1m klines)" },
           ].map((row) => (
             <div key={row.layer} className="flex items-center gap-2">
               <span className="text-xs font-medium w-16" style={{ color: "var(--color-text-muted)" }}>
@@ -840,42 +899,51 @@ export default function Documentation() {
       <SectionHeader icon={Activity} title="12. Auto-Refresh & Real-Time Updates" id="auto-refresh" />
       <DocCard>
         <p className="text-sm leading-relaxed mb-4" style={{ color: "var(--color-text-secondary)" }}>
-          The dashboard uses tRPC's <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>refetchInterval</span> option on queries to automatically poll for updated data:
+          Bandit uses a two-layer data architecture. The browser maintains a local SQLite database (persisted in IndexedDB) that syncs incrementally from the server every 20 seconds. This means the chart, price, and signals update without hitting tRPC.
         </p>
-        <CodeBlock>{`// Dashboard — frontend refetches from DB every 30 seconds
-trpc.band.fullState.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 30000 });
 
-// Trade list — frontend refetches from DB every 30 seconds
-trpc.trade.list.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 30000 });
+        <div className="data-label mb-2">Browser-Side Sync (Every 20s)</div>
+        <CodeBlock>{`// First visit: download all data with progress bar
+GET /api/sync/prices?after=0
+// Returns: [[timestamp, price, mean, upperBand, lowerBand, volume, avgVolume], ...]
+// ~200k rows, ~2.9MB, one-time download
 
-// Backtest summary — frontend refetches from DB every 60 seconds
-trpc.backtest.run.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 60000 });`}</CodeBlock>
+// Return visits: restore from IndexedDB, then fetch only new rows
+GET /api/sync/prices?after=<lastTimestamp>
+// Server recalculates bands for new rows with lookback context`}</CodeBlock>
 
         <div className="data-label mt-4 mb-2">Server-Side Binance Sync</div>
-        <p className="text-xs mb-2" style={{ color: "var(--color-text-secondary)" }}>
-          A background scheduler runs inside the Node.js server process, fetching live data from Binance's public REST API on two intervals:
-        </p>
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div className="p-3 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-buy)" }}>
             <div className="text-xs font-medium mb-1" style={{ color: "var(--color-accent-buy)" }}>
-              Kline Sync — Every 1 minute
+              1m Klines — Every 60 seconds
             </div>
             <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Fetches the latest 2 hourly candles from Binance. Only inserts candles with a closeTime newer than the latest row in the database. This ensures the OHLCV chart data stays current without duplicates.
+              Fetches the latest 5 one-minute candles from Binance. Only inserts candles newer than the latest row in the database.
             </div>
           </div>
           <div className="p-3 rounded-sm" style={{ background: "var(--color-bg-surface)", borderLeft: "3px solid var(--color-accent-neutral)" }}>
             <div className="text-xs font-medium mb-1" style={{ color: "var(--color-accent-neutral)" }}>
-              Ticker Sync — Every 20 seconds
+              Ticker — Every 20 seconds
             </div>
             <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-              Fetches the current spot price from Binance's 24hr ticker endpoint. Inserts a snapshot only if no other snapshot was recorded in the last 60 seconds (dedup window). This provides near-real-time price updates between hourly candles.
+              Current spot price from Binance's 24hr ticker. Inserts only if no snapshot was recorded in the last 60 seconds.
             </div>
           </div>
         </div>
-        <p className="text-xs mt-3" style={{ color: "var(--color-text-muted)" }}>
-          When settings are saved, the mutation's <span style={{ fontFamily: "var(--font-mono)" }}>onSuccess</span> handler invalidates all dependent queries, triggering an immediate refetch. This means band calculations, fee breakdowns, backtest results, and grid search all update instantly after a configuration change — no page reload needed. The rolling Bollinger Bands are recalculated per candle using a sliding window, so the chart shows historically accurate band boundaries at every point in time.
-        </p>
+
+        <div className="data-label mt-4 mb-2">tRPC Refresh (Server Data)</div>
+        <div className="space-y-1">
+          <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>band.fullState</span> — fees, config (every 60s)
+          </div>
+          <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>trade.list</span> — trade history (every 30s)
+          </div>
+          <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-neutral)" }}>backtest.run</span> — backtest metrics (every 60s)
+          </div>
+        </div>
       </DocCard>
 
       <div className="mt-8 text-center">
@@ -883,7 +951,7 @@ trpc.backtest.run.useQuery({ symbol: "BTCUSDT" }, { refetchInterval: 60000 });`}
           className="text-[10px]"
           style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}
         >
-          Bandit v8335440 — BTC Mean Reversion Arbitrage Dashboard
+          Bandit v2025.05 — BTC Mean Reversion Dashboard
         </span>
       </div>
     </div>
