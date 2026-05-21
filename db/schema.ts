@@ -55,7 +55,7 @@ export const bandConfigs = mysqlTable("band_configs", {
   useBnbDiscount: boolean("useBnbDiscount").notNull().default(false),
   makerFeePct: double("makerFeePct").notNull().default(0.1),
   takerFeePct: double("takerFeePct").notNull().default(0.1),
-  withdrawalFeeBtc: double("withdrawalFeeBtc").notNull().default(0.0002),
+  withdrawalFeeBtc: double("withdrawalFeeBtc").notNull().default(0),
   investmentAmount: double("investmentAmount").notNull().default(1000),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")

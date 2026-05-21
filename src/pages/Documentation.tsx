@@ -300,7 +300,7 @@ export default function Documentation() {
                 Withdrawal Fee
               </div>
               <div className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-                Fixed BTC withdrawal fee charged by Binance. Default 0.0002 BTC (~$15.50 at $77,500/BTC). Converted to USD at current price.
+                On-chain BTC withdrawal fee charged by Binance. Set to 0 if only trading BTC/USDT on-exchange (no withdrawal). Previously 0.0002 BTC (~$15.50) for on-chain transfers.
               </div>
             </div>
             <span className="text-xs ml-auto" style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-fee)" }}>
@@ -338,13 +338,13 @@ export default function Documentation() {
             Example: $1,000 investment at $77,500 BTC
           </div>
           <div className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
-            Maker fee: $1.00 (0.1%) + Taker fee: $1.00 (0.1%) + Withdrawal: $15.50 (0.0002 BTC) = <strong style={{ color: "var(--color-text-primary)" }}>$17.50 total fees</strong>
+            Maker fee: $1.00 (0.1%) + Taker fee: $1.00 (0.1%) + Withdrawal: $0.00 (on-exchange only) = <strong style={{ color: "var(--color-text-primary)" }}>$2.00 total fees</strong>
           </div>
           <div className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>
-            Min spread: 1.750% + Profit margin: 0.150% = <strong style={{ color: "var(--color-text-primary)" }}>1.900% target</strong> = $1,552.50 sell price
+            Min spread: 0.200% + Profit margin: 0.150% = <strong style={{ color: "var(--color-text-primary)" }}>0.350% target</strong> = $1,003.50 sell price
           </div>
           <div className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
-            Without BNB discount, a $1,000 trade needs ~$155 price movement (0.20%) just to cover fees and earn a small profit.
+            With no on-chain withdrawal, a $1,000 trade only needs ~$2 in price movement to cover fees. Band width of ~1.75% gives plenty of room for profit.
           </div>
         </div>
       </DocCard>
@@ -566,7 +566,7 @@ export default function Documentation() {
         <ParamRow name="useBnbDiscount" type="boolean" defaultVal="false" description="Toggle BNB fee discount. When enabled, overrides maker/taker fees to 0.075% each (Binance discount for holding BNB)." />
         <ParamRow name="makerFeePct" type="number" defaultVal="0.1" description="Maker fee percentage charged on limit order entry. Binance default: 0.1%. With BNB: 0.075%." />
         <ParamRow name="takerFeePct" type="number" defaultVal="0.1" description="Taker fee percentage charged on market/stop order exit. Binance default: 0.1%. With BNB: 0.075%." />
-        <ParamRow name="withdrawalFeeBtc" type="number" defaultVal="0.0002" description="BTC withdrawal fee on Binance. Fixed at 0.0002 BTC regardless of amount. ~$15.50 at $77,500." />
+        <ParamRow name="withdrawalFeeBtc" type="number" defaultVal="0" description="BTC withdrawal fee. Set to 0 for on-exchange trading only (BTC/USDT, no on-chain transfer). Was 0.0002 BTC for actual withdrawals." />
         <ParamRow name="investmentAmount" type="number" defaultVal="1000" description="Position size in USD. Used to calculate fee amounts and target prices. Range: $100-$100,000." />
       </DocCard>
 

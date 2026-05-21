@@ -19,7 +19,7 @@ export async function getBandConfig(userId: number = 1, symbol: string = "BTCUSD
       useBnbDiscount: false,
       makerFeePct: 0.1,
       takerFeePct: 0.1,
-      withdrawalFeeBtc: 0.0002,
+      withdrawalFeeBtc: 0,
       investmentAmount: 1000,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -65,7 +65,7 @@ export async function upsertBandConfig(
         useBnbDiscount: data.useBnbDiscount ?? false,
         makerFeePct: data.makerFeePct ?? 0.1,
         takerFeePct: data.takerFeePct ?? 0.1,
-        withdrawalFeeBtc: data.withdrawalFeeBtc ?? 0.0002,
+        withdrawalFeeBtc: data.withdrawalFeeBtc ?? 0,
         investmentAmount: data.investmentAmount ?? 1000,
       })
       .$returningId();
